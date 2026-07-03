@@ -1,6 +1,7 @@
 .build/
 .swiftpm/
+.env
 *.xcodeproj/
 *.xcworkspace/
 Package.resolved
-.DS_Store
+Wheredo.app/

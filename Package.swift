@@ -2,12 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "GrokBuddy",
-    platforms: [.macOS(.v14_2)],
+    name: "Wheredo",
+    platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "GrokBuddy",
-            path: "Sources/GrokBuddy"
+            name: "Wheredo",
+            path: "Sources/Wheredo",
+            exclude: ["Info.plist", "Entitlements.plist"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist", "-Xlinker",
+                    "Sources/Wheredo/Info.plist"
+                ])
+            ]
         )
     ]
 )

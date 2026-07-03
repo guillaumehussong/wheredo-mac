@@ -7,9 +7,9 @@ enum XAI {
     static let deviceAuthorizationEndpoint = "https://auth.x.ai/oauth2/device/code"
     static let tokenEndpoint = "https://auth.x.ai/oauth2/token"
     static let deviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
-    static let apiBase = "https://api.x.ai/v1"
-    static let realtimeModel = "grok-voice-think-fast-1.0"
-    static let visionModel = "grok-4.3"
-    static let sttModel = "grok-stt"
-    static let userAgent = "grok-buddy/0.1 (macOS)"
+
+    static var apiBase: String { Config.apiBase }
+    static var visionModel: String { Config.visionModel }
+    static var realtimeModel: String { Config.realtimeModel }
+    static var userAgent = "wheredo/0.1 (macOS)"
 }

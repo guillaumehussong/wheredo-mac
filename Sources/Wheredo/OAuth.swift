@@ -1,24 +1,76 @@
 import Foundation
+import AppKit
 import Security
 
-/// xAI OAuth (device code flow) with Keychain persistence + refresh.
+/// xAI OAuth (device code flow) with persistent token storage.
 struct XAICredentials: Codable {
     let accessToken: String
     let refreshToken: String?
     let expiresAt: Date?
 }
 
-enum OAuth {
-    static let keychainAccount = "grok-buddy-xai-oauth"
-    static let keychainService = "com.grok-buddy.xai"
+/// File-based token store (~/Library/Application Support/Wheredo/oauth.json,
+/// chmod 600).
+///
+/// Why not Keychain? Keychain items are bound to the app's code signature.
+/// Every rebuild with a changing signature made macOS re-prompt for the login
+/// password on each launch. A user-only file has no such binding. Existing
+/// Keychain entries are migrated once, then deleted.
+private enum CredentialStore {
+    // Historical values from the GrokBuddy era — must stay unchanged so the
+    // one-time migration can still find items stored under the old name.
+    static let legacyKeychainAccount = "grok-buddy-xai-oauth"
+    static let legacyKeychainService = "com.grok-buddy.xai"
 
+    static var fileURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("Wheredo", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("oauth.json")
+    }
+
+    /// Load from file; if absent, try a one-time migration from the legacy
+    /// Keychain entry (then remove it so it never prompts again).
     static func load() -> XAICredentials? {
+        if let creds = loadFromFile() { return creds }
+        if let creds = loadFromKeychain() {
+            save(creds)
+            clearKeychain()
+            return creds
+        }
+        return nil
+    }
+
+    static func save(_ creds: XAICredentials) {
+        guard let data = try? JSONEncoder().encode(creds) else { return }
+        let url = fileURL
+        do {
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        } catch {
+            print("⚠️  Could not save credentials: \(error)")
+        }
+        clearKeychain()
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: fileURL)
+        clearKeychain()
+    }
+
+    private static func loadFromFile() -> XAICredentials? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(XAICredentials.self, from: data)
+    }
+
+    private static func loadFromKeychain() -> XAICredentials? {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrService as String: legacyKeychainService,
+            kSecAttrAccount as String: legacyKeychainAccount,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUISkip
         ]
         var item: AnyObject?
         guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess,
@@ -26,26 +78,27 @@ enum OAuth {
         return try? JSONDecoder().decode(XAICredentials.self, from: data)
     }
 
-    static func save(_ creds: XAICredentials) {
-        let data = (try? JSONEncoder().encode(creds)) ?? Data()
+    private static func clearKeychain() {
         let attrs: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount
+            kSecAttrService as String: legacyKeychainService,
+            kSecAttrAccount as String: legacyKeychainAccount
         ]
         SecItemDelete(attrs as CFDictionary)
-        var add = attrs
-        add[kSecValueData as String] = data
-        SecItemAdd(add as CFDictionary, nil)
+    }
+}
+
+enum OAuth {
+    static func load() -> XAICredentials? {
+        CredentialStore.load()
+    }
+
+    static func save(_ creds: XAICredentials) {
+        CredentialStore.save(creds)
     }
 
     static func clear() {
-        let attrs: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount
-        ]
-        SecItemDelete(attrs as CFDictionary)
+        CredentialStore.clear()
     }
 
     /// Resolve a valid access token, refreshing if expired. Throws if not logged in.
@@ -60,7 +113,6 @@ enum OAuth {
             save(refreshed)
             return refreshed.accessToken
         }
-        // Expired and no refresh: return stale token, caller will surface 401.
         return creds.accessToken
     }
 
@@ -75,15 +127,15 @@ enum OAuth {
         }
         let dev = try JSONDecoder().decode(DeviceCodeResponse.self, from: data)
 
-        print("\n━━━ Connexion xAI (SuperGrok / X Premium) ━━━")
+        print("\n━━━ xAI sign-in (SuperGrok / X Premium) ━━━")
         if let complete = dev.verification_uri_complete {
-            print("Ouvre ce lien dans ton navigateur :\n  \(complete)")
+            print("Open this link in your browser:\n  \(complete)")
             if let url = URL(string: complete) { NSWorkspace.shared.open(url) }
         } else {
-            print("Va sur \(dev.verification_uri) et entre le code : \(dev.user_code)")
+            print("Go to \(dev.verification_uri) and enter code: \(dev.user_code)")
             if let url = URL(string: dev.verification_uri) { NSWorkspace.shared.open(url) }
         }
-        print("En attente de ta autorisation…\n")
+        print("Waiting for authorization…\n")
 
         let deadline = Date().addingTimeInterval(TimeInterval(dev.expires_in ?? 300))
         var interval = Double(dev.interval ?? 5)
@@ -99,10 +151,10 @@ enum OAuth {
                 let creds = XAICredentials(
                     accessToken: tok.access_token,
                     refreshToken: tok.refresh_token,
-                    expiresAt: tok.expires_in.map { Date().addingTimeInterval($0) }
+                    expiresAt: tok.expires_in.map { Date().addingTimeInterval(TimeInterval($0)) }
                 )
                 save(creds)
-                print("✓ Connecté.\n")
+                print("✓ Connected.\n")
                 return creds
             }
             let errBody = try? JSONDecoder().decode(TokenError.self, from: tdata)
@@ -118,7 +170,7 @@ enum OAuth {
                 throw OAuthError.expired
             default:
                 throw OAuthError.tokenExchangeFailed(tresp.statusCode, String(data: tdata, encoding: .utf8) ?? "")
-            }
+        }
         }
         throw OAuthError.expired
     }
@@ -137,7 +189,7 @@ enum OAuth {
         return XAICredentials(
             accessToken: tok.access_token,
             refreshToken: tok.refresh_token ?? refresh,
-            expiresAt: tok.expires_in.map { Date().addingTimeInterval($0) }
+            expiresAt: tok.expires_in.map { Date().addingTimeInterval(TimeInterval($0)) }
         )
     }
 }
