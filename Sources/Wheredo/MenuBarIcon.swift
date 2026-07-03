@@ -2,6 +2,10 @@ import AppKit
 
 /// Menu bar icons for Wheredo status (template images — adapt to light/dark menu bar).
 enum MenuBarIcon {
+    /// Standard menu-bar glyph box (matches SF Symbol footprint).
+    private static let logicalSize: CGFloat = 18
+    private static let inset: CGFloat = 1.5
+
     static func image(for status: MenuBarController.Status) -> NSImage {
         switch status {
         case .ready:
@@ -30,23 +34,33 @@ enum MenuBarIcon {
         return fallback
     }
 
-    /// Minimal pointer + target dot — same mark as the desktop app icon.
+    /// Minimal pointer + target dot — fills the full 18×18 pt template box.
     private static func brandedIcon(accent: Bool) -> NSImage {
-        let scale: CGFloat = 2
-        let size = NSSize(width: 18 * scale, height: 18 * scale)
-        let image = NSImage(size: size)
+        let image = NSImage(size: NSSize(width: logicalSize, height: logicalSize))
         image.lockFocus()
 
         NSColor.black.setFill()
         NSColor.black.setStroke()
 
-        let s = size.width
-        let tip = NSPoint(x: s * 0.28, y: s * 0.74) // flipped Y (AppKit origin bottom-left)
-        let inner = NSPoint(x: s * 0.39, y: s * 0.48)
-        let tail = NSPoint(x: s * 0.32, y: s * 0.40)
-        let notch = NSPoint(x: s * 0.48, y: s * 0.52)
+        // Drawable area — same padding Apple uses around SF Symbols.
+        let box = NSRect(
+            x: inset,
+            y: inset,
+            width: logicalSize - inset * 2,
+            height: logicalSize - inset * 2
+        )
+        let s = box.width
 
-        // Pointer body
+        // Normalized (0–1) within box; Y=1 is the visual top (AppKit Y grows up).
+        func pt(_ nx: CGFloat, _ ny: CGFloat) -> NSPoint {
+            NSPoint(x: box.minX + nx * s, y: box.minY + ny * s)
+        }
+
+        let tip = pt(0.06, 0.94)
+        let inner = pt(0.46, 0.40)
+        let tail = pt(0.14, 0.06)
+        let notch = pt(0.60, 0.30)
+
         let pointer = NSBezierPath()
         pointer.move(to: tip)
         pointer.line(to: inner)
@@ -54,7 +68,6 @@ enum MenuBarIcon {
         pointer.close()
         pointer.fill()
 
-        // Inner notch (classic cursor shape)
         let notchPath = NSBezierPath()
         notchPath.move(to: inner)
         notchPath.line(to: notch)
@@ -62,9 +75,8 @@ enum MenuBarIcon {
         notchPath.close()
         notchPath.fill()
 
-        // Target dot at the tip
-        let dotR = s * 0.075
-        let dotCenter = NSPoint(x: tip.x + s * 0.055, y: tip.y - s * 0.055)
+        let dotR = s * 0.11
+        let dotCenter = NSPoint(x: tip.x + s * 0.07, y: tip.y - s * 0.07)
         NSBezierPath(ovalIn: NSRect(
             x: dotCenter.x - dotR,
             y: dotCenter.y - dotR,
@@ -72,15 +84,14 @@ enum MenuBarIcon {
             height: dotR * 2
         )).fill()
 
-        // Accent: second ring around dot when active
         if accent {
             let ring = NSBezierPath(ovalIn: NSRect(
-                x: dotCenter.x - dotR * 1.8,
-                y: dotCenter.y - dotR * 1.8,
-                width: dotR * 3.6,
-                height: dotR * 3.6
+                x: dotCenter.x - dotR * 1.7,
+                y: dotCenter.y - dotR * 1.7,
+                width: dotR * 3.4,
+                height: dotR * 3.4
             ))
-            ring.lineWidth = 0.8 * scale
+            ring.lineWidth = 1.0
             ring.stroke()
         }
 
