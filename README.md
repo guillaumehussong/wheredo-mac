@@ -4,7 +4,7 @@
 
 Powered by [xAI's Grok](https://x.ai) (vision, speech-to-text, text-to-speech). Requires a SuperGrok or X Premium account.
 
-> Looking for Windows or Linux? See [wheredo-desktop](../wheredo-desktop) — a Tauri app with the same features and the same configuration.
+> Looking for Windows or Linux? See [wheredo-desktop](https://github.com/guillaumehussong/wheredo-desktop) — a Tauri app with the same features and the same configuration.
 
 ## How it works
 
