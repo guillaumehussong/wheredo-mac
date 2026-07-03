@@ -27,10 +27,12 @@ final class MenuBarController {
         self.speakAction = speakAction
         guard item == nil else { return }
 
-        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength * 2)
-        item?.button?.image = MenuBarIcon.image(for: .ready)
-        item?.button?.imagePosition = .imageOnly
-        item?.button?.toolTip = "Wheredo — Running"
+        item = NSStatusBar.system.statusItem(withLength: MenuBarIcon.width)
+        guard let button = item?.button else { return }
+        button.image = MenuBarIcon.image(for: .ready)
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
+        button.toolTip = "Wheredo — Running"
 
         let menu = NSMenu()
         let header = NSMenuItem(title: "Wheredo", action: nil, keyEquivalent: "")
