@@ -18,14 +18,16 @@ final class MenuBarController {
     private var statusMenuItem: NSMenuItem?
     private var speakAction: (() -> Void)?
     private var pulseTimer: Timer?
+    private var busyPulseTimer: Timer?
     private var pulseOn = false
+    private var busyPulseOn = false
     private var currentStatus: Status = .ready
 
     func install(speakAction: @escaping () -> Void) {
         self.speakAction = speakAction
         guard item == nil else { return }
 
-        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength * 2)
         item?.button?.image = MenuBarIcon.image(for: .ready)
         item?.button?.imagePosition = .imageOnly
         item?.button?.toolTip = "Wheredo — Running"
@@ -60,6 +62,7 @@ final class MenuBarController {
         statusMenuItem?.title = status.rawValue
         item?.button?.toolTip = "Wheredo — \(status.rawValue)"
         stopPulse()
+        stopBusyPulse()
 
         switch status {
         case .ready:
@@ -69,6 +72,7 @@ final class MenuBarController {
             startPulse()
         case .busy:
             item?.button?.image = MenuBarIcon.image(for: .busy)
+            startBusyPulse()
         case .needAccessibility, .error:
             item?.button?.image = MenuBarIcon.image(for: status)
         }
@@ -86,6 +90,25 @@ final class MenuBarController {
             }
         }
         RunLoop.main.add(pulseTimer!, forMode: .common)
+    }
+
+    private func startBusyPulse() {
+        busyPulseOn = false
+        busyPulseTimer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.currentStatus == .busy else { return }
+                self.busyPulseOn.toggle()
+                self.item?.button?.image = self.busyPulseOn
+                    ? MenuBarIcon.busyPulseFrame()
+                    : MenuBarIcon.image(for: .busy)
+            }
+        }
+        RunLoop.main.add(busyPulseTimer!, forMode: .common)
+    }
+
+    private func stopBusyPulse() {
+        busyPulseTimer?.invalidate()
+        busyPulseTimer = nil
     }
 
     private func stopPulse() {
@@ -108,6 +131,7 @@ final class MenuBarController {
 
     @objc private func quit() {
         stopPulse()
+        stopBusyPulse()
         item = nil
         NSApp.terminate(nil)
     }
